@@ -25,18 +25,19 @@ function extractData(html,url,depth,level) {
     const $ = cheerio.load(html);
     const images = []
     const links = []
-    if ( depth && level< depth){
+    if (depth !== 0 && level< depth){
     $('html a').each(function () {
-        if (isValidUrl(url)){
-        links.push($(this).attr('href'));
+        const newurl = $(this).attr('href')
+        if (isValidUrl(newurl)){
+        links.push( newurl.startsWith("/")? url+newurl:newurl);
         }
     });
    }
     $('img').each(function () {
         images.push({
             imageUrl: $(this).attr('src'),
-            sourceUrl: url, // the page url this image was found on
-            depth // the depth of the source at which this image was found on
+            sourceUrl: url,
+            depth:level
         });
     });
 
@@ -44,17 +45,15 @@ function extractData(html,url,depth,level) {
 }
 
 async function startCrawlPage(pageUrl,pageDepth) {
-    const pwait = { w: true }
+    const wait = { w: true }
     process.stdout.write("wait.")
     const doWait = () => {
-        if (pwait.w === true) {
+        if (wait.w === true) {
             process.stdout.write('.')
             setTimeout(doWait, 1000);
         }
     }
     doWait()
- 
-    pwait.w = false
     const data = await crawlPage(pageUrl,pageDepth);
     const content = JSON.stringify({ results:data});
     try {
@@ -63,7 +62,9 @@ async function startCrawlPage(pageUrl,pageDepth) {
          } catch (err) {
          console.error(err);
          }
-
+         wait.w = false
+         process.stdout.write('\nCheck the results.json file')
+      
 }
 
 async function crawlPage(url,depth=0,level=0) {
@@ -71,18 +72,13 @@ async function crawlPage(url,depth=0,level=0) {
     try {
        const html = await fetchHTML(url);
        const data = extractData(html,url,depth,level);
-
-    //     console.log(data.links.length)
        let children = [];
-
   if(data.links.length>0){
-    
-   //children =  await Promise.all(data.links.map((link)=>crawlPage(link,depth,Number(level+1)))() )
+   children =  await Promise.all([...data.links.map((link)=>crawlPage(link,depth,level+1))] )
   }
    results=[...data.images,...children]
-     
     } catch (error) {
-        console.error(`Failed to crawl "${url}": ${error.message}`);
+       // console.error(`Failed to crawl "${url}": ${error.message}`);
     }
    return results
 }
